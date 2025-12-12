@@ -313,8 +313,13 @@ def main():
     # ==========================================================================
     st.subheader("🎯 Performance del Modello: Actual vs Predicted")
     
+    # 1. Calcola il percorso corretto per questo file specifico
+    # (pages -> streamlit_dashboard -> data -> test_predictions.csv)
+    pred_path = Path(__file__).parent.parent / 'data' / 'test_predictions.csv'
+    
     try:
-        test_pred = pd.read_csv('data/test_predictions.csv', parse_dates=['date_time'])
+        # 2. Usa la variabile pred_path invece della stringa fissa
+        test_pred = pd.read_csv(pred_path, parse_dates=['date_time'])
         
         # Scatter plot
         fig = px.scatter(
@@ -344,6 +349,8 @@ def main():
         
     except FileNotFoundError:
         st.info("📊 I dati delle previsioni saranno disponibili dopo l'esecuzione del modello.")
+        # Debug: Rimuovi il commento sotto se vuoi vedere dove sta cercando il file
+        # st.write(f"Sto cercando in: {pred_path}")
 
 # =============================================================================
 # ESECUZIONE
