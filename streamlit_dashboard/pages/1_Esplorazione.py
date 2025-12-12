@@ -26,18 +26,21 @@ st.set_page_config(page_title="Esplorazione Dati", page_icon="📊", layout="wid
 @st.cache_data
 def load_data():
     """Carica il dataset processato"""
-    """Carica il dataset processato usando un percorso assoluto"""
-    # 1. Trova il percorso del file corrente (pages/2_Analisi_KPI.py)
+    # 1. Trova il percorso del file corrente
     current_file_path = Path(__file__)
     
     # 2. Risale di DUE livelli per arrivare alla root del progetto
-    # .parent (cartella pages) -> .parent (cartella principale streamlit_dashboard)
-    data_path = current_path.parent.parent / 'data' / 'traffic_processed.csv'
+    data_path = current_file_path.parent.parent / 'data' / 'traffic_processed.csv'
+    
     try:
-        df = pd.read_csv('data/traffic_processed.csv', parse_dates=['date_time'])
+        # --- ERRORE ERA QUI ---
+        # Prima c'era: df = pd.read_csv('data/traffic_processed.csv', ...)
+        # Adesso usiamo la variabile data_path calcolata sopra:
+        df = pd.read_csv(data_path, parse_dates=['date_time'])
+        return df
     except FileNotFoundError:
         # Dati di esempio se il file non esiste
-        st.warning("⚠️ File dati non trovato. Mostrando dati di esempio.")
+        st.warning(f"⚠️ File non trovato in: {data_path}. Mostrando dati di esempio.")
         dates = pd.date_range('2017-01-01', periods=1000, freq='H')
         df = pd.DataFrame({
             'date_time': dates,
@@ -48,7 +51,7 @@ def load_data():
             'day_of_week': dates.dayofweek,
             'is_holiday': np.random.choice([0, 1], 1000, p=[0.97, 0.03])
         })
-    return df
+        return df
 
 # =============================================================================
 # PAGINA
