@@ -32,10 +32,7 @@ def load_data():
     
     # 2. Risale di DUE livelli per arrivare alla root del progetto
     # .parent (cartella pages) -> .parent (cartella principale streamlit_dashboard)
-    project_root = current_file_path.parent.parent
-    
-    # 3. Costruisce il percorso corretto verso la cartella data
-    file_path = project_root / 'data' / 'traffic_processed.csv'
+    data_path = current_path.parent.parent / 'data' / 'traffic_processed.csv'
     try:
         df = pd.read_csv('data/traffic_processed.csv', parse_dates=['date_time'])
     except FileNotFoundError:
