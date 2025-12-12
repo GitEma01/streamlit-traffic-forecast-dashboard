@@ -16,6 +16,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from pathlib import Path
 import json
 
 st.set_page_config(page_title="Analisi e KPI", page_icon="📈", layout="wide")
