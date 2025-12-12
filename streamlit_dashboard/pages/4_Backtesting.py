@@ -24,17 +24,27 @@ st.set_page_config(page_title="Backtesting", page_icon="🧪", layout="wide")
 # =============================================================================
 @st.cache_data
 def load_test_predictions():
-    """Carica le previsioni sul test set"""
+    """Carica le previsioni sul test set con percorso assoluto"""
+    # 1. Costruisci il percorso assoluto
+    file_path = Path(__file__).parent.parent / 'data' / 'test_predictions.csv'
+    
     try:
-        df = pd.read_csv('data/test_predictions.csv', parse_dates=['date_time'])
+        # 2. Prova a caricare il file reale
+        df = pd.read_csv(file_path, parse_dates=['date_time'])
+        
+        # 3. Calcola le metriche di errore (necessarie per i grafici)
         df['error'] = df['traffic_volume'] - df['predicted']
         df['abs_error'] = np.abs(df['error'])
+        # Evita divisione per zero
         df['pct_error'] = df['abs_error'] / df['traffic_volume'].replace(0, 1) * 100
         df['hour'] = df['date_time'].dt.hour
         df['day_of_week'] = df['date_time'].dt.dayofweek
         return df
+        
     except FileNotFoundError:
-        # Genera dati simulati
+        st.warning(f"⚠️ File '{file_path.name}' non trovato. Generazione dati simulati per demo.")
+        
+        # --- LOGICA DI BACKUP (DATI SIMULATI) ---
         np.random.seed(42)
         dates = pd.date_range('2018-01-01', periods=6000, freq='H')
         base = 3000 + 2000 * np.sin(np.pi * dates.hour / 12 - np.pi/2)
@@ -55,11 +65,15 @@ def load_test_predictions():
 
 @st.cache_data
 def load_metrics():
-    """Carica le metriche del modello"""
+    """Carica le metriche del modello con percorso assoluto"""
+    # 1. Costruisci il percorso assoluto
+    json_path = Path(__file__).parent.parent / 'data' / 'final_metrics.json'
+    
     try:
-        with open('data/final_metrics.json', 'r') as f:
+        with open(json_path, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
+        st.warning("⚠️ Metriche non trovate. Uso valori di default.")
         return {'test_mae': 450, 'baseline_naive_mae': 625}
 
 # =============================================================================
