@@ -2,22 +2,14 @@
 ================================================================================
 PAGINA 2: ANALISI E KPI
 ================================================================================
-Visualizzazione dei pattern temporali e degli indicatori di performance.
-
-Riferimenti corso:
-- Introduzione_Business_Intelligence.pdf: "KPI Design: dal Goal alla Metrica"
-- "Il grafico deve rispondere alla domanda della KPI in 1-2 secondi"
-================================================================================
 """
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from pathlib import Path
 import json
+from pathlib import Path  # <--- FONDAMENTALE
 
 st.set_page_config(page_title="Analisi e KPI", page_icon="📈", layout="wide")
 
@@ -26,52 +18,28 @@ st.set_page_config(page_title="Analisi e KPI", page_icon="📈", layout="wide")
 # =============================================================================
 @st.cache_data
 def load_data():
-   
-    """Carica il dataset processato usando un percorso assoluto"""
-    # 1. Trova il percorso del file corrente (pages/2_Analisi_KPI.py)
-    current_file_path = Path(__file__)
+    """Carica il dataset processato"""
+    # Path: pages -> streamlit_dashboard -> data
+    data_path = Path(__file__).parent.parent / 'data' / 'traffic_processed.csv'
     
-    # 2. Risale di DUE livelli per arrivare alla root del progetto
-    # .parent (cartella pages) -> .parent (cartella principale streamlit_dashboard)
-    project_root = current_file_path.parent.parent
-    
-    # 3. Costruisce il percorso corretto verso la cartella data
-    file_path = project_root / 'data' / 'traffic_processed.csv'
     try:
-        df = pd.read_csv('data/traffic_processed.csv', parse_dates=['date_time'])
-    except FileNotFoundError:
-        dates = pd.date_range('2017-01-01', periods=8760, freq='H')
-        np.random.seed(42)
-        base = 3000 + 2000 * np.sin(np.pi * dates.hour / 12 - np.pi/2)
-        df = pd.DataFrame({
-            'date_time': dates,
-            'traffic_volume': (base + np.random.normal(0, 500, len(dates))).clip(0, 7000).astype(int),
-            'temp_celsius': 15 + 10 * np.sin(2*np.pi*(dates.dayofyear)/365) + np.random.normal(0, 5, len(dates)),
-            'weather_main': np.random.choice(['Clear', 'Clouds', 'Rain', 'Snow'], len(dates), p=[0.4, 0.35, 0.15, 0.1]),
-            'hour': dates.hour,
-            'day_of_week': dates.dayofweek,
-            'is_holiday': np.random.choice([0, 1], len(dates), p=[0.97, 0.03]),
-            'is_weekend': (dates.dayofweek >= 5).astype(int)
-        })
-    return df
+        df = pd.read_csv(data_path, parse_dates=['date_time'])
+        return df
+    except Exception as e:
+        st.error(f"❌ Errore caricamento dati: {e}")
+        st.stop()
 
 @st.cache_data
 def load_metrics():
-    """Carica le metriche del modello"""
+    """Carica le metriche"""
+    # Path: pages -> streamlit_dashboard -> data
+    json_path = Path(__file__).parent.parent / 'data' / 'final_metrics.json'
+    
     try:
-        current_file_path = Path(__file__)
-        project_root = current_file_path.parent.parent
-        file_path = project_root / 'data' / 'final_metrics.json'
-        with open('data/final_metrics.json', 'r') as f:
+        with open(json_path, 'r') as f:
             return json.load(f)
-    except FileNotFoundError:
-        return {
-            'test_mae': 450,
-            'test_rmse': 650,
-            'test_r2': 0.92,
-            'improvement_vs_naive_pct': 28,
-            'baseline_naive_mae': 625
-        }
+    except:
+        return {}
 
 # =============================================================================
 # PAGINA
