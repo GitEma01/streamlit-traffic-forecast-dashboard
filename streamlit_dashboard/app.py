@@ -317,6 +317,18 @@ st.markdown("""
             font-size: 2.5rem;
         }
     }
+    /* =========================================
+       FIX MENU SIDEBAR ATTIVO
+       ========================================= */
+    div[data-testid="stSidebarNav"] li a[aria-current="page"] {
+        background-color: #667eea !important;
+        border: 1px solid rgba(255,255,255,0.2);
+    }
+
+    div[data-testid="stSidebarNav"] li a[aria-current="page"] span {
+        color: white !important;
+        font-weight: 600 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
