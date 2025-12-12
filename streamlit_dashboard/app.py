@@ -326,27 +326,41 @@ st.markdown("""
 @st.cache_data
 def load_metrics():
     try:
-        with open('data/final_metrics.json', 'r') as f:
+        # Trova il percorso assoluto della cartella dove si trova app.py
+        base_path = Path(__file__).parent
+        # Costruisce il percorso completo al file json
+        file_path = base_path / 'data' / 'final_metrics.json'
+        
+        with open(file_path, 'r') as f:
             metrics = json.load(f)
             return {
                 'test_mae': metrics.get('test_mae', metrics.get('mae_test', 141)),
                 'test_r2': metrics.get('test_r2', metrics.get('r2_test', 0.988)),
                 'improvement_vs_naive_pct': metrics.get('improvement_vs_naive_pct', 76),
             }
-    except:
+    except Exception as e:
+        # Stampa l'errore nei log di Streamlit Cloud per il debug
+        print(f"Errore caricamento metriche: {e}")
         return {'test_mae': 141, 'test_r2': 0.988, 'improvement_vs_naive_pct': 76}
 
 @st.cache_data  
 def load_data_summary():
     try:
-        df = pd.read_csv('data/traffic_processed.csv', parse_dates=['date_time'])
+        # Trova il percorso assoluto della cartella dove si trova app.py
+        base_path = Path(__file__).parent
+        # Costruisce il percorso completo al file csv
+        file_path = base_path / 'data' / 'traffic_processed.csv'
+        
+        df = pd.read_csv(file_path, parse_dates=['date_time'])
         return {
             'n_rows': len(df),
             'date_start': df['date_time'].min().strftime('%b %Y'),
             'date_end': df['date_time'].max().strftime('%b %Y'),
             'mean_traffic': df['traffic_volume'].mean(),
         }
-    except:
+    except Exception as e:
+        # Stampa l'errore nei log di Streamlit Cloud per il debug
+        print(f"Errore caricamento CSV: {e}")
         return {'n_rows': 40575, 'date_start': 'Oct 2012', 'date_end': 'Sep 2018', 'mean_traffic': 3290}
 
 # =============================================================================
