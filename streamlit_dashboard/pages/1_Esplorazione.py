@@ -25,6 +25,16 @@ st.set_page_config(page_title="Esplorazione Dati", page_icon="📊", layout="wid
 @st.cache_data
 def load_data():
     """Carica il dataset processato"""
+    """Carica il dataset processato usando un percorso assoluto"""
+    # 1. Trova il percorso del file corrente (pages/2_Analisi_KPI.py)
+    current_file_path = Path(__file__)
+    
+    # 2. Risale di DUE livelli per arrivare alla root del progetto
+    # .parent (cartella pages) -> .parent (cartella principale streamlit_dashboard)
+    project_root = current_file_path.parent.parent
+    
+    # 3. Costruisce il percorso corretto verso la cartella data
+    file_path = project_root / 'data' / 'traffic_processed.csv'
     try:
         df = pd.read_csv('data/traffic_processed.csv', parse_dates=['date_time'])
     except FileNotFoundError:
