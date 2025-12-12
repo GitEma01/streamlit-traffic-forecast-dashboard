@@ -26,9 +26,12 @@ st.set_page_config(page_title="Previsioni", page_icon="🔮", layout="wide")
 # =============================================================================
 @st.cache_resource
 def load_model():
-    """Carica il modello XGBoost"""
     try:
-        model = joblib.load('models/xgboost_model_final.pkl')
+        # 1. Calcola il percorso assoluto corretto
+        model_path = Path(__file__).parent.parent / 'models' / 'xgboost_model_final.pkl'
+        
+        # 2. Carica usando QUEL percorso
+        model = joblib.load(model_path)
         return model
     except:
         st.warning("⚠️ Modello non trovato. Usando stima semplificata.")
@@ -36,20 +39,36 @@ def load_model():
 
 @st.cache_data
 def load_data():
-    """Carica il dataset processato"""
+    """Carica il dataset processato con percorso assoluto"""
     try:
-        df = pd.read_csv('data/traffic_processed.csv', parse_dates=['date_time'])
+        # 1. Calcola il percorso partendo da questo file (dentro 'pages')
+        # Sali di due livelli: pages -> streamlit_dashboard -> data
+        data_path = Path(__file__).parent.parent / 'data' / 'traffic_processed.csv'
+        
+        # 2. Carica il CSV
+        df = pd.read_csv(data_path, parse_dates=['date_time'])
         return df
-    except:
+        
+    except Exception as e:
+        # Mostra l'errore per capire se il path è sbagliato o il file manca
+        print(f"Errore caricamento dati: {e}")
+        st.error(f"⚠️ Impossibile caricare i dati dal percorso: {data_path}")
         return None
 
 @st.cache_data
 def load_feature_columns():
-    """Carica la lista delle feature"""
+    """Carica la lista delle feature con percorso assoluto"""
     try:
-        with open('data/feature_columns.json', 'r') as f:
+        # 1. Calcola il percorso corretto
+        json_path = Path(__file__).parent.parent / 'data' / 'feature_columns.json'
+        
+        # 2. Leggi il JSON
+        with open(json_path, 'r') as f:
             return json.load(f)
-    except:
+            
+    except Exception as e:
+        print(f"Errore caricamento feature columns: {e}")
+        # Ritorna None senza bloccare l'app, ma avvisando nei log
         return None
 
 # =============================================================================
