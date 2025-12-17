@@ -1,15 +1,4 @@
-"""
-================================================================================
-PAGINA 4: BACKTESTING
-================================================================================
-Test sistematico del modello sui dati del Test Set (2018).
-
-Riferimenti corso:
-- TimeSeriesAnalysis pt3.pdf: Model Evaluation, Error Metrics
-- AI Products Pipeline: Test & Feedback
-================================================================================
-"""
-
+#PAGINA 4: BACKTESTING
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -20,13 +9,10 @@ from pathlib import Path
 
 st.set_page_config(page_title="Backtesting", page_icon="🧪", layout="wide")
 
-# =============================================================================
 # CARICAMENTO DATI
-# =============================================================================
 @st.cache_data
 def load_test_predictions():
     """Carica le previsioni sul test set con percorso assoluto"""
-    # 1. Costruisci il percorso assoluto
     file_path = Path(__file__).parent.parent / 'data' / 'test_predictions.csv'
     
     try:
@@ -43,7 +29,7 @@ def load_test_predictions():
         return df
         
     except FileNotFoundError:
-        st.warning(f"⚠️ File '{file_path.name}' non trovato. Generazione dati simulati per demo.")
+        st.warning(f" File '{file_path.name}' non trovato. Generazione dati simulati per demo.")
         
         # --- LOGICA DI BACKUP (DATI SIMULATI) ---
         np.random.seed(42)
@@ -67,21 +53,18 @@ def load_test_predictions():
 @st.cache_data
 def load_metrics():
     """Carica le metriche del modello con percorso assoluto"""
-    # 1. Costruisci il percorso assoluto
     json_path = Path(__file__).parent.parent / 'data' / 'final_metrics.json'
     
     try:
         with open(json_path, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        st.warning("⚠️ Metriche non trovate. Uso valori di default.")
+        st.warning(" Metriche non trovate. Uso valori di default.")
         return {'test_mae': 450, 'baseline_naive_mae': 625}
 
-# =============================================================================
 # PAGINA
-# =============================================================================
 def main():
-    st.title("🧪 Backtesting del Modello")
+    st.title(" Backtesting del Modello")
     st.markdown("Valutazione sistematica delle performance sul Test Set (2018)")
     
     df = load_test_predictions()
@@ -90,7 +73,7 @@ def main():
     st.markdown("---")
     
     # METRICHE RIASSUNTIVE
-    st.subheader("📊 Metriche di Performance")
+    st.subheader(" Metriche di Performance")
     
     mae = df['abs_error'].mean()
     rmse = np.sqrt((df['error'] ** 2).mean())
@@ -115,7 +98,7 @@ def main():
     st.markdown("---")
     
     # SELEZIONE PERIODO
-    st.subheader("📅 Seleziona Periodo di Analisi")
+    st.subheader(" Seleziona Periodo di Analisi")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -137,7 +120,7 @@ def main():
     st.markdown("---")
     
     # GRAFICO ACTUAL VS PREDICTED
-    st.subheader("📈 Actual vs Predicted nel Tempo")
+    st.subheader(" Actual vs Predicted nel Tempo")
     
     if aggregation == 'Giornaliero':
         df_plot = df_filtered.set_index('date_time').resample('D').agg({
@@ -165,7 +148,7 @@ def main():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("🎯 Scatter: Actual vs Predicted")
+        st.subheader(" Scatter: Actual vs Predicted")
         df_sample = df_filtered.sample(min(2000, len(df_filtered)))
         fig_scatter = px.scatter(df_sample, x='traffic_volume', y='predicted', opacity=0.3,
                                  color='abs_error', color_continuous_scale='Reds')
@@ -176,7 +159,7 @@ def main():
         st.plotly_chart(fig_scatter, use_container_width=True)
     
     with col2:
-        st.subheader("📊 Distribuzione Errori")
+        st.subheader(" Distribuzione Errori")
         fig_hist = px.histogram(df_filtered, x='error', nbins=50, color_discrete_sequence=['steelblue'])
         fig_hist.add_vline(x=0, line_dash="dash", line_color="red")
         fig_hist.update_layout(xaxis_title='Errore (veicoli/ora)', yaxis_title='Frequenza')
@@ -185,7 +168,7 @@ def main():
     st.markdown("---")
     
     # ERRORE PER ORA
-    st.subheader("⏰ Errore per Fascia Oraria")
+    st.subheader(" Errore per Fascia Oraria")
     
     col1, col2 = st.columns([2, 1])
     
@@ -201,7 +184,7 @@ def main():
         st.plotly_chart(fig_hour, use_container_width=True)
     
     with col2:
-        st.markdown("### 📊 Analisi")
+        st.markdown("###  Analisi")
         best_hours = error_by_hour.nsmallest(3)
         worst_hours = error_by_hour.nlargest(3)
         
@@ -216,7 +199,7 @@ def main():
     st.markdown("---")
     
     # TABELLA CAMPIONE
-    st.subheader("📋 Campione di Previsioni")
+    st.subheader(" Campione di Previsioni")
     
     n_samples = st.slider("Numero di campioni", 10, 100, 20)
     sample = df_filtered.sample(n_samples).sort_values('date_time')
@@ -229,7 +212,7 @@ def main():
     
     # CONCLUSIONI
     st.markdown("---")
-    st.subheader("✅ Conclusioni del Backtesting")
+    st.subheader(" Conclusioni del Backtesting")
     
     within_500 = (df_filtered['abs_error'] <= 500).mean() * 100
     within_1000 = (df_filtered['abs_error'] <= 1000).mean() * 100
@@ -237,10 +220,10 @@ def main():
     st.success(f"""
     **Risultati del Backtesting sul Test Set (2018):**
     
-    - ✅ **MAE: {mae:.0f}** veicoli/ora (miglioramento del {improvement:.0f}% vs baseline)
-    - ✅ **R²: {r2:.4f}** (il modello spiega il {r2*100:.1f}% della varianza)
-    - ✅ **{within_500:.1f}%** delle previsioni hanno errore ≤ 500 veicoli/ora
-    - ✅ **{within_1000:.1f}%** delle previsioni hanno errore ≤ 1000 veicoli/ora
+    -  **MAE: {mae:.0f}** veicoli/ora (miglioramento del {improvement:.0f}% vs baseline)
+    -  **R²: {r2:.4f}** (il modello spiega il {r2*100:.1f}% della varianza)
+    -  **{within_500:.1f}%** delle previsioni hanno errore ≤ 500 veicoli/ora
+    -  **{within_1000:.1f}%** delle previsioni hanno errore ≤ 1000 veicoli/ora
     
     Il modello è pronto per il deployment in produzione.
     """)
