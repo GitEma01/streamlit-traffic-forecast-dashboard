@@ -1,19 +1,4 @@
-"""
-================================================================================
-PAGINA 3: 🔮 PREVISIONI - VERSIONE COMPLETA
-================================================================================
-Form interattivo per generare previsioni con il modello XGBoost.
-
-FUNZIONALITÀ:
-- Modalità STORICA: usa lag reali dal dataset (2012-2018) + confronto ground truth
-- Modalità FUTURA: usa rolling forecast per date oltre il dataset (>2018)
-
-REQUISITO TRACCIA:
-"integrare nella dashboard il modello costruito nel Project Work #2
-in modo che l'utente possa fornire alcuni input tramite un semplice form"
-================================================================================
-"""
-
+#PAGINA 3: 🔮 PREVISIONI - VERSIONE COMPLETA
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -25,9 +10,7 @@ from pathlib import Path
 
 st.set_page_config(page_title="Previsioni", page_icon="🔮", layout="wide")
 
-# =============================================================================
 # CARICAMENTO RISORSE
-# =============================================================================
 @st.cache_resource
 def load_model():
     """Carica il modello XGBoost addestrato"""
@@ -36,7 +19,7 @@ def load_model():
         model = joblib.load(model_path)
         return model
     except Exception as e:
-        st.warning(f"⚠️ Modello non trovato: {e}")
+        st.warning(f" Modello non trovato: {e}")
         return None
 
 @st.cache_data
@@ -47,7 +30,7 @@ def load_data():
         df = pd.read_csv(data_path, parse_dates=['date_time'])
         return df
     except Exception as e:
-        st.error(f"⚠️ Impossibile caricare i dati: {e}")
+        st.error(f" Impossibile caricare i dati: {e}")
         return None
 
 @st.cache_data
@@ -58,17 +41,11 @@ def load_feature_columns():
         with open(json_path, 'r') as f:
             return json.load(f)
     except Exception as e:
-        st.warning(f"⚠️ Feature columns non trovate: {e}")
+        st.warning(f" Feature columns non trovate: {e}")
         return None
 
-# =============================================================================
 # FUNZIONI HELPER - RECUPERO DATI DAL DATASET
-# =============================================================================
 def get_historical_value(df, target_datetime):
-    """
-    Recupera il valore reale (ground truth) dal dataset.
-    Cerca corrispondenze entro 30 minuti dal timestamp target.
-    """
     if df is None:
         return None
     
@@ -78,12 +55,6 @@ def get_historical_value(df, target_datetime):
     return None
 
 def get_all_lags_from_dataset(df, target_datetime):
-    """
-    Recupera TUTTI i valori lag dal dataset (se esistono).
-    
-    Returns:
-        dict: {'lag_1': value, 'lag_2': value, ...} con None se non trovati
-    """
     if df is None:
         return {}
     
@@ -109,10 +80,6 @@ def get_all_lags_from_dataset(df, target_datetime):
     return lags
 
 def get_rolling_features(df, target_datetime):
-    """
-    Recupera le rolling features dal dataset (se disponibili).
-    Queste sono pre-calcolate nel CSV e includono medie/std mobili.
-    """
     if df is None:
         return {}
     
@@ -130,10 +97,9 @@ def get_rolling_features(df, target_datetime):
         'rolling_max_24h': row.get('rolling_max_24h'),
         'rolling_range_24h': row.get('rolling_range_24h')
     }
-
-# =============================================================================
 # ROLLING FORECAST - PER DATE FUTURE
-# =============================================================================
+# ==========================================================================
+
 def predict_with_rolling_forecast(model, feature_columns, df, target_datetime, 
                                    temperature, weather_main):
     """
