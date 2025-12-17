@@ -1,15 +1,4 @@
-"""
-================================================================================
-PAGINA 1: ESPLORAZIONE DATI
-================================================================================
-Visualizzazione interattiva del dataset Metro Interstate Traffic Volume.
-
-Riferimenti corso:
-- streamlitlezione.pdf: st.dataframe, st.selectbox, filtri interattivi
-- "EDA" nei materiali BI
-================================================================================
-"""
-
+#PAGINA 1: ESPLORAZIONE DATI
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -20,9 +9,7 @@ from pathlib import Path
 
 st.set_page_config(page_title="Esplorazione Dati", page_icon="📊", layout="wide")
 
-# =============================================================================
 # CARICAMENTO DATI
-# =============================================================================
 @st.cache_data
 def load_data():
     """Carica il dataset processato"""
@@ -33,14 +20,11 @@ def load_data():
     data_path = current_file_path.parent.parent / 'data' / 'traffic_processed.csv'
     
     try:
-        # --- ERRORE ERA QUI ---
-        # Prima c'era: df = pd.read_csv('data/traffic_processed.csv', ...)
-        # Adesso usiamo la variabile data_path calcolata sopra:
         df = pd.read_csv(data_path, parse_dates=['date_time'])
         return df
     except FileNotFoundError:
         # Dati di esempio se il file non esiste
-        st.warning(f"⚠️ File non trovato in: {data_path}. Mostrando dati di esempio.")
+        st.warning(f" File non trovato in: {data_path}. Mostrando dati di esempio.")
         dates = pd.date_range('2017-01-01', periods=1000, freq='H')
         df = pd.DataFrame({
             'date_time': dates,
@@ -52,12 +36,10 @@ def load_data():
             'is_holiday': np.random.choice([0, 1], 1000, p=[0.97, 0.03])
         })
         return df
-
-# =============================================================================
+        
 # PAGINA
-# =============================================================================
 def main():
-    st.title("📊 Esplorazione Dati")
+    st.title(" Esplorazione Dati")
     st.markdown("Visualizza e filtra il dataset Metro Interstate Traffic Volume")
     
     # Carica dati
@@ -65,9 +47,7 @@ def main():
     
     st.markdown("---")
     
-    # ==========================================================================
     # SIDEBAR - FILTRI
-    # ==========================================================================
     st.sidebar.header("🔍 Filtri")
     
     # Filtro anno
@@ -109,10 +89,8 @@ def main():
     )
     df_filtered = df[mask]
     
-    # ==========================================================================
     # STATISTICHE RIASSUNTIVE
-    # ==========================================================================
-    st.subheader("📈 Statistiche Riassuntive")
+    st.subheader(" Statistiche Riassuntive")
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -130,10 +108,8 @@ def main():
     
     st.markdown("---")
     
-    # ==========================================================================
     # SERIE TEMPORALE
-    # ==========================================================================
-    st.subheader("📉 Serie Temporale")
+    st.subheader(" Serie Temporale")
     
     # Opzioni di aggregazione
     agg_options = {
@@ -172,10 +148,8 @@ def main():
     
     st.markdown("---")
     
-    # ==========================================================================
     # PREVIEW DATASET
-    # ==========================================================================
-    st.subheader("📋 Preview Dataset")
+    st.subheader(" Preview Dataset")
     
     # Opzioni di visualizzazione
     col1, col2 = st.columns([1, 3])
@@ -193,10 +167,8 @@ def main():
         hide_index=True
     )
     
-    # ==========================================================================
     # DISTRIBUZIONE
-    # ==========================================================================
-    st.subheader("📊 Distribuzione Traffic Volume")
+    st.subheader(" Distribuzione Traffic Volume")
     
     col1, col2 = st.columns(2)
     
@@ -222,10 +194,8 @@ def main():
         fig_box.update_layout(yaxis_title='Traffico (veicoli/ora)')
         st.plotly_chart(fig_box, use_container_width=True)
     
-    # ==========================================================================
     # INFO DATASET
-    # ==========================================================================
-    with st.expander("ℹ️ Informazioni sul Dataset"):
+    with st.expander(" Informazioni sul Dataset"):
         st.markdown(f"""
         ### Dataset: Metro Interstate Traffic Volume
         
@@ -246,8 +216,6 @@ def main():
         | `hour`, `day_of_week` | Componenti temporali |
         """)
 
-# =============================================================================
 # ESECUZIONE
-# =============================================================================
 if __name__ == "__main__":
     main()
