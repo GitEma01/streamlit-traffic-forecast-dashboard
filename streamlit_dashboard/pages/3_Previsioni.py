@@ -1,9 +1,12 @@
 """
 ================================================================================
-PAGINA 3: 🔮 PREVISIONI
+PAGINA 3: 🔮 PREVISIONI - VERSIONE COMPLETA
 ================================================================================
 Form interattivo per generare previsioni con il modello XGBoost.
-Include confronto con ground truth se la data è nel dataset.
+
+FUNZIONALITÀ:
+- Modalità STORICA: usa lag reali dal dataset (2012-2018) + confronto ground truth
+- Modalità FUTURA: usa rolling forecast per date oltre il dataset (>2018)
 
 REQUISITO TRACCIA:
 "integrare nella dashboard il modello costruito nel Project Work #2
@@ -27,93 +30,261 @@ st.set_page_config(page_title="Previsioni", page_icon="🔮", layout="wide")
 # =============================================================================
 @st.cache_resource
 def load_model():
+    """Carica il modello XGBoost addestrato"""
     try:
-        # 1. Calcola il percorso assoluto corretto
         model_path = Path(__file__).parent.parent / 'models' / 'xgboost_model_final.pkl'
-        
-        # 2. Carica usando QUEL percorso
         model = joblib.load(model_path)
         return model
-    except:
-        st.warning("⚠️ Modello non trovato. Usando stima semplificata.")
+    except Exception as e:
+        st.warning(f"⚠️ Modello non trovato: {e}")
         return None
 
 @st.cache_data
 def load_data():
-    """Carica il dataset processato con percorso assoluto"""
+    """Carica il dataset processato con tutte le feature"""
     try:
-        # 1. Calcola il percorso partendo da questo file (dentro 'pages')
-        # Sali di due livelli: pages -> streamlit_dashboard -> data
         data_path = Path(__file__).parent.parent / 'data' / 'traffic_processed.csv'
-        
-        # 2. Carica il CSV
         df = pd.read_csv(data_path, parse_dates=['date_time'])
         return df
-        
     except Exception as e:
-        # Mostra l'errore per capire se il path è sbagliato o il file manca
-        print(f"Errore caricamento dati: {e}")
-        st.error(f"⚠️ Impossibile caricare i dati dal percorso: {data_path}")
+        st.error(f"⚠️ Impossibile caricare i dati: {e}")
         return None
 
 @st.cache_data
 def load_feature_columns():
-    """Carica la lista delle feature con percorso assoluto"""
+    """Carica la lista delle feature utilizzate dal modello"""
     try:
-        # 1. Calcola il percorso corretto
         json_path = Path(__file__).parent.parent / 'data' / 'feature_columns.json'
-        
-        # 2. Leggi il JSON
         with open(json_path, 'r') as f:
             return json.load(f)
-            
     except Exception as e:
-        print(f"Errore caricamento feature columns: {e}")
-        # Ritorna None senza bloccare l'app, ma avvisando nei log
+        st.warning(f"⚠️ Feature columns non trovate: {e}")
         return None
 
 # =============================================================================
-# FUNZIONI HELPER
+# FUNZIONI HELPER - RECUPERO DATI DAL DATASET
 # =============================================================================
 def get_historical_value(df, target_datetime):
-    """Recupera il valore reale (ground truth) dal dataset"""
+    """
+    Recupera il valore reale (ground truth) dal dataset.
+    Cerca corrispondenze entro 30 minuti dal timestamp target.
+    """
     if df is None:
         return None
     
-    # Cerca corrispondenza esatta o entro 30 minuti
     mask = abs(df['date_time'] - target_datetime) < pd.Timedelta(minutes=30)
     if mask.any():
         return df.loc[mask, 'traffic_volume'].iloc[0]
     return None
 
-def get_historical_lag(df, target_datetime, hours_back):
-    """Recupera valore storico a N ore prima"""
+def get_all_lags_from_dataset(df, target_datetime):
+    """
+    Recupera TUTTI i valori lag dal dataset (se esistono).
+    
+    Returns:
+        dict: {'lag_1': value, 'lag_2': value, ...} con None se non trovati
+    """
     if df is None:
-        return None
+        return {}
     
-    lag_datetime = target_datetime - timedelta(hours=hours_back)
-    mask = abs(df['date_time'] - lag_datetime) < pd.Timedelta(minutes=30)
-    if mask.any():
-        return df.loc[mask, 'traffic_volume'].iloc[0]
-    return None
+    lag_configs = {
+        'lag_1': 1,      # 1 ora fa
+        'lag_2': 2,      # 2 ore fa
+        'lag_3': 3,      # 3 ore fa
+        'lag_24': 24,    # 24 ore fa (ieri stessa ora)
+        'lag_48': 48,    # 48 ore fa (2 giorni fa)
+        'lag_168': 168   # 168 ore fa (1 settimana fa)
+    }
+    
+    lags = {}
+    for lag_name, hours_back in lag_configs.items():
+        lag_datetime = target_datetime - timedelta(hours=hours_back)
+        mask = abs(df['date_time'] - lag_datetime) < pd.Timedelta(minutes=30)
+        
+        if mask.any():
+            lags[lag_name] = df.loc[mask, 'traffic_volume'].iloc[0]
+        else:
+            lags[lag_name] = None
+    
+    return lags
 
-def create_features(dt, temp_celsius, weather_main, lag_1, lag_24, lag_168, 
-                    rolling_mean_24h=None, rolling_std_24h=None):
-    """Crea il DataFrame delle feature per la previsione"""
+def get_rolling_features(df, target_datetime):
+    """
+    Recupera le rolling features dal dataset (se disponibili).
+    Queste sono pre-calcolate nel CSV e includono medie/std mobili.
+    """
+    if df is None:
+        return {}
     
+    mask = abs(df['date_time'] - target_datetime) < pd.Timedelta(minutes=30)
+    if not mask.any():
+        return {}
+    
+    row = df.loc[mask].iloc[0]
+    
+    return {
+        'rolling_mean_24h': row.get('rolling_mean_24h'),
+        'rolling_std_24h': row.get('rolling_std_24h'),
+        'rolling_mean_168h': row.get('rolling_mean_168h'),
+        'rolling_min_24h': row.get('rolling_min_24h'),
+        'rolling_max_24h': row.get('rolling_max_24h'),
+        'rolling_range_24h': row.get('rolling_range_24h')
+    }
+
+# =============================================================================
+# ROLLING FORECAST - PER DATE FUTURE
+# =============================================================================
+def predict_with_rolling_forecast(model, feature_columns, df, target_datetime, 
+                                   temperature, weather_main):
+    """
+    PREDIZIONE ITERATIVA per date oltre il dataset.
+    
+    Strategia:
+    1. Parte dall'ultimo timestamp disponibile nel dataset
+    2. Predice ora per ora fino alla data target
+    3. Usa le predizioni precedenti come lag per le successive
+    
+    Questo è il metodo standard per forecasting multi-step in produzione
+    quando non hai ancora i valori reali.
+    
+    Args:
+        model: modello XGBoost addestrato
+        feature_columns: lista delle colonne feature
+        df: dataset con dati storici
+        target_datetime: data/ora da predire (futura)
+        temperature: temperatura prevista per il target
+        weather_main: condizione meteo prevista per il target
+    
+    Returns:
+        tuple: (prediction_finale, lags_utilizzati, num_iterazioni)
+    """
+    
+    # 1. Verifica se è davvero una data futura
+    last_datetime = df['date_time'].max()
+    
+    if target_datetime <= last_datetime:
+        # Non è una data futura, ritorna None
+        return None, None, 0
+    
+    # 2. Calcola quante ore dobbiamo predire
+    hours_to_predict = int((target_datetime - last_datetime).total_seconds() / 3600)
+    
+    st.info(f"🔄 **Rolling Forecast attivo**: predirò {hours_to_predict} ore dal {last_datetime.strftime('%Y-%m-%d %H:%M')} al target")
+    
+    # 3. Costruisci storia iniziale: ultimi 168 valori (1 settimana) dal dataset
+    history = []
+    for hours_back in range(168, 0, -1):
+        past_dt = last_datetime - timedelta(hours=hours_back)
+        val = get_historical_value(df, past_dt)
+        history.append(val if val is not None else 3000)  # default se mancante
+    
+    # 4. Predici iterativamente ora per ora
+    current_datetime = last_datetime
+    predictions_made = []
+    
+    # Mostra progress bar
+    with st.expander(f"📊 Dettagli Rolling Forecast (mostrando prime 20 iterazioni)", expanded=False):
+        progress_bar = st.progress(0)
+        detail_text = st.empty()
+        
+        for i in range(hours_to_predict):
+            current_datetime += timedelta(hours=1)
+            
+            # Costruisci lag dalla storia accumulata
+            lags = {
+                'lag_1': history[-1],
+                'lag_2': history[-2] if len(history) >= 2 else history[-1],
+                'lag_3': history[-3] if len(history) >= 3 else history[-1],
+                'lag_24': history[-24] if len(history) >= 24 else 3000,
+                'lag_48': history[-48] if len(history) >= 48 else 3000,
+                'lag_168': history[-168] if len(history) >= 168 else 3000
+            }
+            
+            # Determina meteo: usa input utente solo per l'ultima ora, medio per le altre
+            is_last_hour = (i == hours_to_predict - 1)
+            temp_current = temperature if is_last_hour else 15
+            weather_current = weather_main if is_last_hour else 'Clear'
+            
+            # Crea features
+            X = create_features(
+                dt=current_datetime,
+                temp_celsius=temp_current,
+                weather_main=weather_current,
+                lags=lags,
+                rolling=None  # le rolling vengono stimate dalla funzione
+            )
+            
+            # Allinea colonne al modello
+            for col in feature_columns:
+                if col not in X.columns:
+                    X[col] = 0
+            X = X[feature_columns]
+            
+            # Esegui predizione
+            pred = model.predict(X)[0]
+            pred = max(0, pred)  # no valori negativi
+            
+            # Aggiungi alla storia
+            history.append(pred)
+            predictions_made.append(pred)
+            
+            # Mostra dettagli solo per le prime 20 iterazioni
+            if i < 20:
+                detail_text.text(f"Iterazione {i+1}/{hours_to_predict}: {current_datetime.strftime('%Y-%m-%d %H:%M')} → Predizione: {pred:,.0f} veicoli/h (lag_1={lags['lag_1']:,.0f})")
+            elif i == 20:
+                detail_text.text(f"... (altre {hours_to_predict - 20} iterazioni in corso) ...")
+            
+            # Aggiorna progress
+            progress_bar.progress((i + 1) / hours_to_predict)
+    
+    # 5. Ritorna il risultato finale
+    final_prediction = predictions_made[-1]
+    
+    final_lags = {
+        'lag_1': history[-1],
+        'lag_2': history[-2],
+        'lag_3': history[-3],
+        'lag_24': history[-24],
+        'lag_48': history[-48],
+        'lag_168': history[-168]
+    }
+    
+    return final_prediction, final_lags, hours_to_predict
+
+# =============================================================================
+# FEATURE ENGINEERING
+# =============================================================================
+def create_features(dt, temp_celsius, weather_main, lags=None, rolling=None):
+    """
+    Crea il DataFrame delle feature per la predizione.
+    
+    Questa funzione replica esattamente la feature engineering usata in training.
+    
+    Args:
+        dt: datetime target
+        temp_celsius: temperatura in Celsius
+        weather_main: condizione meteo principale
+        lags: dict con valori lag (se None, usa default)
+        rolling: dict con rolling features (se None, stima da lag)
+    
+    Returns:
+        pd.DataFrame: una riga con tutte le feature
+    """
+    
+    # ========== FEATURE TEMPORALI BASE ==========
     hour = dt.hour
-    dow = dt.dayofweek
+    dow = dt.dayofweek  # 0=Monday, 6=Sunday
     month = dt.month
     year = dt.year
     day_of_month = dt.day
     week_of_year = dt.isocalendar()[1]
     
-    # Feature binarie
+    # ========== FEATURE BINARIE ==========
     is_weekend = 1 if dow >= 5 else 0
-    is_holiday = 0  # Semplificazione
+    is_holiday = 0  # Semplificazione (in produzione si userebbe calendario festività)
     is_workday = 1 if (dow < 5 and is_holiday == 0) else 0
     
-    # Encoding ciclico
+    # ========== ENCODING CICLICO (per catturare periodicità) ==========
     hour_sin = np.sin(2 * np.pi * hour / 24)
     hour_cos = np.cos(2 * np.pi * hour / 24)
     dow_sin = np.sin(2 * np.pi * dow / 7)
@@ -121,131 +292,143 @@ def create_features(dt, temp_celsius, weather_main, lag_1, lag_24, lag_168,
     month_sin = np.sin(2 * np.pi * month / 12)
     month_cos = np.cos(2 * np.pi * month / 12)
     
-    # Rush hour
+    # ========== RUSH HOUR FEATURES ==========
     is_rush_hour_am = 1 if hour in [6, 7, 8, 9] else 0
     is_rush_hour_pm = 1 if hour in [16, 17, 18] else 0
     is_rush_hour = 1 if (is_rush_hour_am or is_rush_hour_pm) else 0
     is_night = 1 if hour in [22, 23, 0, 1, 2, 3, 4, 5] else 0
     is_work_rush = 1 if (is_rush_hour and is_workday) else 0
     
-    # Lag features
-    lag_2 = lag_1 * 0.98 if lag_1 else 3000
-    lag_3 = lag_1 * 0.96 if lag_1 else 3000
-    lag_48 = lag_24 if lag_24 else 3000
+    # ========== LAG FEATURES ==========
+    if lags is None:
+        lags = {}
     
-    # Differenze
+    # Usa valori dal dict o default 3000
+    lag_1 = lags.get('lag_1', 3000)
+    lag_2 = lags.get('lag_2', 3000)
+    lag_3 = lags.get('lag_3', 3000)
+    lag_24 = lags.get('lag_24', 3000)
+    lag_48 = lags.get('lag_48', 3000)
+    lag_168 = lags.get('lag_168', 3000)
+    
+    # Differenze tra lag (catturano trend)
     diff_lag_1_2 = (lag_1 - lag_2) if (lag_1 and lag_2) else 0
     diff_lag_1_24 = (lag_1 - lag_24) if (lag_1 and lag_24) else 0
     
-    # Rolling (stima se non disponibile)
-    if rolling_mean_24h is None:
-        rolling_mean_24h = lag_1 if lag_1 else 3000
-    if rolling_std_24h is None:
-        rolling_std_24h = 500
-    rolling_mean_168h = rolling_mean_24h
-    rolling_min_24h = rolling_mean_24h * 0.5
-    rolling_max_24h = rolling_mean_24h * 1.5
-    rolling_range_24h = rolling_max_24h - rolling_min_24h
+    # ========== ROLLING FEATURES ==========
+    if rolling is None:
+        rolling = {}
     
-    # Meteo
+    # Usa valori reali se disponibili, altrimenti stima da lag
+    rolling_mean_24h = rolling.get('rolling_mean_24h', lag_1 if lag_1 else 3000)
+    rolling_std_24h = rolling.get('rolling_std_24h', 500)
+    rolling_mean_168h = rolling.get('rolling_mean_168h', rolling_mean_24h)
+    rolling_min_24h = rolling.get('rolling_min_24h', rolling_mean_24h * 0.5)
+    rolling_max_24h = rolling.get('rolling_max_24h', rolling_mean_24h * 1.5)
+    rolling_range_24h = rolling.get('rolling_range_24h', rolling_max_24h - rolling_min_24h)
+    
+    # ========== WEATHER FEATURES (one-hot encoding) ==========
     weather_types = ['Clear', 'Clouds', 'Drizzle', 'Fog', 'Haze', 'Mist', 
                      'Rain', 'Smoke', 'Snow', 'Squall', 'Thunderstorm']
-    weather_features = {f'weather_{w}': (1 if weather_main == w else 0) for w in weather_types}
+    weather_features = {
+        f'weather_{w}': (1 if weather_main == w else 0) for w in weather_types
+    }
     
+    # Meteo aggregato
     is_bad_weather = 1 if weather_main in ['Snow', 'Thunderstorm', 'Fog'] else 0
     is_precipitation = 1 if weather_main in ['Rain', 'Drizzle', 'Snow'] else 0
     
-    # Costruzione dizionario feature
+    # ========== COSTRUZIONE DIZIONARIO FINALE ==========
     features = {
+        # Temporali base
         'hour': hour,
         'day_of_week': dow,
         'month': month,
         'year': year,
         'day_of_month': day_of_month,
         'week_of_year': week_of_year,
+        
+        # Binarie
         'is_weekend': is_weekend,
         'is_holiday': is_holiday,
         'is_workday': is_workday,
+        
+        # Cicliche
         'hour_sin': hour_sin,
         'hour_cos': hour_cos,
         'dow_sin': dow_sin,
         'dow_cos': dow_cos,
         'month_sin': month_sin,
         'month_cos': month_cos,
+        
+        # Rush hour
         'is_rush_hour_am': is_rush_hour_am,
         'is_rush_hour_pm': is_rush_hour_pm,
         'is_rush_hour': is_rush_hour,
         'is_night': is_night,
         'is_work_rush': is_work_rush,
+        
+        # Meteo
         'temp_celsius': temp_celsius,
-        'rain_1h_capped': 0,
+        'rain_1h_capped': 0,  # Non usato in input utente
         'is_bad_weather': is_bad_weather,
         'is_precipitation': is_precipitation,
-        'lag_1': lag_1 if lag_1 else 3000,
+        
+        # Lag
+        'lag_1': lag_1,
         'lag_2': lag_2,
         'lag_3': lag_3,
-        'lag_24': lag_24 if lag_24 else 3000,
+        'lag_24': lag_24,
         'lag_48': lag_48,
-        'lag_168': lag_168 if lag_168 else 3000,
+        'lag_168': lag_168,
         'diff_lag_1_2': diff_lag_1_2,
         'diff_lag_1_24': diff_lag_1_24,
+        
+        # Rolling
         'rolling_mean_24h': rolling_mean_24h,
         'rolling_std_24h': rolling_std_24h,
         'rolling_mean_168h': rolling_mean_168h,
         'rolling_min_24h': rolling_min_24h,
         'rolling_max_24h': rolling_max_24h,
         'rolling_range_24h': rolling_range_24h,
+        
+        # Altre
         'time_diff_hours': 1,
         'is_after_gap': 0,
     }
     
+    # Aggiungi one-hot weather
     features.update(weather_features)
     
     return pd.DataFrame([features])
 
-def estimate_traffic_simple(hour, is_weekend, temp):
-    """Stima semplificata se il modello non è disponibile"""
-    base = 3000
-    
-    # Pattern orario
-    if 7 <= hour <= 9:
-        base += 2000
-    elif 16 <= hour <= 18:
-        base += 2500
-    elif 0 <= hour <= 5:
-        base -= 2000
-    
-    # Weekend
-    if is_weekend:
-        base -= 500
-    
-    # Temperatura
-    if temp < -10:
-        base -= 300
-    elif temp > 25:
-        base += 200
-    
-    return max(0, base + np.random.normal(0, 200))
-
 # =============================================================================
-# INTERFACCIA
+# INTERFACCIA UTENTE
 # =============================================================================
 st.title("🔮 Previsioni Traffico")
-st.markdown("Genera previsioni utilizzando il modello XGBoost addestrato")
+st.markdown("""
+Genera previsioni utilizzando il modello XGBoost addestrato.
+Supporta sia **predizioni storiche** (con confronto ground truth) che **predizioni future** (con rolling forecast).
+""")
 
 # Caricamento risorse
 model = load_model()
 df = load_data()
 feature_columns = load_feature_columns()
 
-# Verifica disponibilità dati
+# Info dataset
 if df is not None:
     min_date = df['date_time'].min().date()
     max_date = df['date_time'].max().date()
-    st.info(f"📅 Dati disponibili: {min_date} → {max_date}. Seleziona una data in questo range per vedere il confronto con il valore reale.")
+    st.success(f"✅ **Dataset caricato**: {len(df):,} osservazioni dal {min_date} al {max_date}")
 else:
+    st.error("❌ **Dataset non disponibile**")
     min_date = datetime(2012, 1, 1).date()
-    max_date = datetime(2018, 12, 31).date()
+    max_date = datetime(2025, 12, 31).date()
+
+if model is None:
+    st.error("❌ **Modello non disponibile**")
+    st.stop()
 
 st.markdown("---")
 
@@ -254,73 +437,113 @@ st.markdown("---")
 # =============================================================================
 st.subheader("📝 Parametri di Input")
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
     st.markdown("**📅 Data e Ora**")
-    selected_date = st.date_input(
-        "Data",
-        value=datetime(2018, 6, 15).date(),
-        min_value=min_date,
-        max_value=max_date
+    
+    # Scelta modalità
+    mode = st.radio(
+        "Modalità predizione",
+        options=["📊 Storica (2012-2018)", "🚀 Futura (>2018)"],
+        help="Storica: usa lag reali dal dataset. Futura: usa rolling forecast."
     )
+    
+    # Input data in base alla modalità
+    if "Storica" in mode:
+        selected_date = st.date_input(
+            "Data",
+            value=datetime(2018, 6, 15).date(),
+            min_value=min_date,
+            max_value=max_date,
+            help="Seleziona una data nel range del dataset"
+        )
+    else:
+        selected_date = st.date_input(
+            "Data",
+            value=datetime(2020, 6, 15).date(),
+            min_value=max_date + timedelta(days=1),
+            max_value=datetime(2025, 12, 31).date(),
+            help="Seleziona una data futura (oltre il dataset)"
+        )
+    
     selected_hour = st.selectbox(
         "Ora",
         options=list(range(24)),
         index=12,
         format_func=lambda x: f"{x:02d}:00"
     )
-    is_holiday = st.checkbox("Giorno festivo", value=False)
 
 with col2:
     st.markdown("**🌤️ Condizioni Meteo**")
-    weather_options = ['Clear', 'Clouds', 'Rain', 'Snow', 'Fog', 'Mist', 'Drizzle', 'Thunderstorm']
-    weather = st.selectbox("Condizione meteo", options=weather_options, index=0)
-    temperature = st.slider("Temperatura (°C)", min_value=-30, max_value=40, value=20)
-
-with col3:
-    st.markdown("**📊 Valori Storici**")
-    use_auto_lag = st.checkbox("Usa valori automatici dal dataset", value=True)
     
-    if not use_auto_lag:
-        manual_lag_1 = st.number_input("Traffico 1 ora fa", min_value=0, max_value=8000, value=3000)
-        manual_lag_24 = st.number_input("Traffico 24 ore fa", min_value=0, max_value=8000, value=3000)
-    else:
-        manual_lag_1 = None
-        manual_lag_24 = None
+    weather_options = ['Clear', 'Clouds', 'Rain', 'Snow', 'Fog', 'Mist', 
+                       'Drizzle', 'Thunderstorm']
+    weather = st.selectbox(
+        "Condizione meteo",
+        options=weather_options,
+        index=0,
+        help="Condizione meteo prevista"
+    )
+    
+    temperature = st.slider(
+        "Temperatura (°C)",
+        min_value=-30,
+        max_value=40,
+        value=20,
+        help="Temperatura in gradi Celsius"
+    )
 
 # =============================================================================
 # CALCOLO PREVISIONE
 # =============================================================================
 if st.button("🚀 Genera Previsione", type="primary", use_container_width=True):
     
-    # Costruisci datetime
-    target_dt = pd.Timestamp(datetime.combine(selected_date, datetime.min.time()) + timedelta(hours=selected_hour))
+    # Costruisci datetime target
+    target_dt = pd.Timestamp(
+        datetime.combine(selected_date, datetime.min.time()) + timedelta(hours=selected_hour)
+    )
     
-    # Recupera valori storici
-    if use_auto_lag and df is not None:
-        lag_1 = get_historical_lag(df, target_dt, 1)
-        lag_24 = get_historical_lag(df, target_dt, 24)
-        lag_168 = get_historical_lag(df, target_dt, 168)
+    st.markdown("---")
+    
+    # Determina modalità: storica o futura
+    is_historical = (df is not None) and (target_dt <= df['date_time'].max())
+    
+    # ========== MODALITÀ STORICA ==========
+    if is_historical:
+        st.info("📊 **Modalità Storica Attiva**: Utilizzo lag reali dal dataset")
         
-        if lag_1 is None:
-            st.warning("⚠️ Dati storici non disponibili per questa data. Uso valori di default.")
-            lag_1, lag_24, lag_168 = 3000, 3000, 3000
-    else:
-        lag_1 = manual_lag_1 if manual_lag_1 else 3000
-        lag_24 = manual_lag_24 if manual_lag_24 else 3000
-        lag_168 = 3000
-    
-    # Genera previsione
-    if model is not None and feature_columns is not None:
-        # Crea feature
+        # Recupera lag e rolling dal dataset
+        lags = get_all_lags_from_dataset(df, target_dt)
+        rolling = get_rolling_features(df, target_dt)
+        
+        # Mostra lag recuperati
+        with st.expander("🔍 Valori Lag Recuperati dal Dataset", expanded=False):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                for lag_name in ['lag_1', 'lag_2', 'lag_3']:
+                    val = lags.get(lag_name)
+                    if val is not None:
+                        st.success(f"✅ **{lag_name}**: {val:,.0f} veicoli/h")
+                    else:
+                        st.warning(f"⚠️ **{lag_name}**: Non disponibile (uso default)")
+            
+            with col2:
+                for lag_name in ['lag_24', 'lag_48', 'lag_168']:
+                    val = lags.get(lag_name)
+                    if val is not None:
+                        st.success(f"✅ **{lag_name}**: {val:,.0f} veicoli/h")
+                    else:
+                        st.warning(f"⚠️ **{lag_name}**: Non disponibile (uso default)")
+        
+        # Crea features
         X = create_features(
             dt=target_dt,
             temp_celsius=temperature,
             weather_main=weather,
-            lag_1=lag_1,
-            lag_24=lag_24,
-            lag_168=lag_168
+            lags=lags,
+            rolling=rolling
         )
         
         # Allinea colonne
@@ -329,16 +552,33 @@ if st.button("🚀 Genera Previsione", type="primary", use_container_width=True)
                 X[col] = 0
         X = X[feature_columns]
         
-        # Previsione
+        # Predizione
         prediction = model.predict(X)[0]
         prediction = max(0, prediction)
-    else:
-        # Stima semplificata
-        is_weekend = 1 if target_dt.dayofweek >= 5 else 0
-        prediction = estimate_traffic_simple(selected_hour, is_weekend, temperature)
+        
+        # Recupera ground truth
+        ground_truth = get_historical_value(df, target_dt)
+        num_iterations = 0
     
-    # Recupera ground truth (se disponibile)
-    ground_truth = get_historical_value(df, target_dt)
+    # ========== MODALITÀ FUTURA ==========
+    else:
+        st.warning("🚀 **Modalità Futura Attiva**: Utilizzo rolling forecast (predizioni iterative)")
+        st.markdown("""
+        ℹ️ Il modello predirà ora per ora dall'ultimo valore disponibile (2018) fino al target.
+        Questo processo può richiedere alcuni secondi per date molto lontane.
+        """)
+        
+        # Rolling forecast
+        prediction, lags, num_iterations = predict_with_rolling_forecast(
+            model=model,
+            feature_columns=feature_columns,
+            df=df,
+            target_datetime=target_dt,
+            temperature=temperature,
+            weather_main=weather
+        )
+        
+        ground_truth = None  # Non disponibile per date future
     
     st.markdown("---")
     
@@ -350,20 +590,20 @@ if st.button("🚀 Genera Previsione", type="primary", use_container_width=True)
     # Determina livello traffico
     if prediction < 1500:
         level = "🟢 BASSO"
-        level_color = "green"
+        level_desc = "Traffico scorrevole"
     elif prediction < 3500:
         level = "🟡 MEDIO"
-        level_color = "orange"
+        level_desc = "Traffico moderato"
     elif prediction < 5500:
         level = "🟠 ALTO"
-        level_color = "darkorange"
+        level_desc = "Traffico intenso"
     else:
         level = "🔴 MOLTO ALTO"
-        level_color = "red"
+        level_desc = "Traffico congestionato"
     
-    # Layout risultati
+    # Layout risultati in base a disponibilità ground truth
     if ground_truth is not None:
-        # CON CONFRONTO GROUND TRUTH
+        # ===== CON GROUND TRUTH (modalità storica) =====
         col1, col2, col3, col4 = st.columns(4)
         
         error = prediction - ground_truth
@@ -385,17 +625,18 @@ if st.button("🚀 Genera Previsione", type="primary", use_container_width=True)
         
         with col3:
             st.metric(
-                label="📏 Errore",
+                label="📉 Errore",
                 value=f"{error:+,.0f}",
                 delta=f"{error_pct:.1f}%",
-                delta_color="inverse"
+                delta_color="inverse",
+                help="Differenza tra previsione e realtà"
             )
         
         with col4:
             st.metric(
                 label="🚦 Livello",
                 value=level.split()[1],
-                help="Livello di traffico"
+                help=level_desc
             )
         
         # Valutazione errore
@@ -407,10 +648,10 @@ if st.button("🚀 Genera Previsione", type="primary", use_container_width=True)
         elif error_pct < 20:
             st.warning(f"⚠️ **Previsione accettabile.** Errore del {error_pct:.1f}%")
         else:
-            st.error(f"❌ **Previsione imprecisa.** Errore del {error_pct:.1f}% - Possibili cause: evento speciale, dati anomali")
+            st.error(f"❌ **Previsione imprecisa.** Errore del {error_pct:.1f}% - Possibili cause: evento speciale, anomalia nei dati")
     
     else:
-        # SENZA GROUND TRUTH (data futura o non disponibile)
+        # ===== SENZA GROUND TRUTH (modalità futura) =====
         col1, col2, col3 = st.columns(3)
         
         with col1:
@@ -421,37 +662,32 @@ if st.button("🚀 Genera Previsione", type="primary", use_container_width=True)
             )
         
         with col2:
-            # Calcola valore tipico per quell'ora
-            if df is not None:
-                typical = df[df['date_time'].dt.hour == selected_hour]['traffic_volume'].mean()
-            else:
-                typical = 3300
-            
-            delta = prediction - typical
             st.metric(
-                label="📈 Tipico per quest'ora",
-                value=f"{typical:,.0f}",
-                delta=f"{delta:+,.0f} vs previsione",
-                delta_color="off"
+                label="🔄 Iterazioni",
+                value=f"{num_iterations}",
+                help="Numero di predizioni intermedie effettuate"
             )
         
         with col3:
             st.metric(
-                label="🚦 Livello Traffico",
+                label="🚦 Livello",
                 value=level.split()[1],
-                help="Livello di traffico previsto"
+                help=level_desc
             )
         
-        st.info("ℹ️ **Nota:** Per questa data non è disponibile il valore reale nel dataset. La previsione non può essere verificata.")
+        st.info("""
+        ℹ️ **Nota**: Per questa data non è disponibile il valore reale nel dataset.
+        La previsione è stata generata tramite rolling forecast e non può essere verificata.
+        """)
     
     # =============================================================================
     # GRAFICO CONTESTUALE
     # =============================================================================
-    st.markdown("---")
-    st.subheader("📈 Contesto: Pattern Giornaliero")
-    
     if df is not None:
-        # Pattern medio per ora
+        st.markdown("---")
+        st.subheader("📈 Contesto: Pattern Giornaliero Tipico")
+        
+        # Calcola pattern medio per il tipo di giorno (weekend/feriale)
         is_weekend_selected = 1 if target_dt.dayofweek >= 5 else 0
         
         if is_weekend_selected:
@@ -463,8 +699,9 @@ if st.button("🚀 Genera Previsione", type="primary", use_container_width=True)
             hourly_pattern = df[df['date_time'].dt.dayofweek < 5].groupby(
                 df['date_time'].dt.hour
             )['traffic_volume'].mean()
-            pattern_label = "Feriale"
+            pattern_label = "Giorni Feriali"
         
+        # Crea grafico
         fig = go.Figure()
         
         # Pattern tipico
@@ -472,10 +709,11 @@ if st.button("🚀 Genera Previsione", type="primary", use_container_width=True)
             x=list(range(24)),
             y=hourly_pattern.values,
             mode='lines+markers',
-            name=f'Pattern tipico ({pattern_label})',
+            name=f'Pattern medio ({pattern_label})',
             line=dict(color='steelblue', width=2),
             fill='tozeroy',
-            fillcolor='rgba(70, 130, 180, 0.2)'
+            fillcolor='rgba(70, 130, 180, 0.2)',
+            hovertemplate='Ora: %{x}:00<br>Traffico medio: %{y:,.0f}<extra></extra>'
         ))
         
         # Punto previsione
@@ -484,7 +722,8 @@ if st.button("🚀 Genera Previsione", type="primary", use_container_width=True)
             y=[prediction],
             mode='markers',
             name='Previsione',
-            marker=dict(color='red', size=15, symbol='star')
+            marker=dict(color='red', size=15, symbol='star'),
+            hovertemplate='Ora: %{x}:00<br>Previsione: %{y:,.0f}<extra></extra>'
         ))
         
         # Punto ground truth (se disponibile)
@@ -494,7 +733,8 @@ if st.button("🚀 Genera Previsione", type="primary", use_container_width=True)
                 y=[ground_truth],
                 mode='markers',
                 name='Valore Reale',
-                marker=dict(color='green', size=12, symbol='circle')
+                marker=dict(color='green', size=12, symbol='circle'),
+                hovertemplate='Ora: %{x}:00<br>Valore reale: %{y:,.0f}<extra></extra>'
             ))
         
         fig.update_layout(
@@ -502,7 +742,8 @@ if st.button("🚀 Genera Previsione", type="primary", use_container_width=True)
             yaxis_title='Traffico (veicoli/ora)',
             hovermode='x unified',
             showlegend=True,
-            legend=dict(orientation='h', yanchor='bottom', y=1.02)
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),
+            height=400
         )
         
         st.plotly_chart(fig, use_container_width=True)
@@ -510,53 +751,114 @@ if st.button("🚀 Genera Previsione", type="primary", use_container_width=True)
     # =============================================================================
     # DETTAGLI TECNICI
     # =============================================================================
-    with st.expander("🔧 Dettagli Tecnici"):
+    with st.expander("🔧 Dettagli Tecnici della Predizione"):
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**Input utilizzati:**")
-            st.write(f"- Data/Ora: {target_dt.strftime('%Y-%m-%d %H:%M')}")
-            st.write(f"- Meteo: {weather}")
-            st.write(f"- Temperatura: {temperature}°C")
-            st.write(f"- Festivo: {'Sì' if is_holiday else 'No'}")
+            st.markdown("**📥 Input Forniti:**")
+            st.write(f"- Data/Ora: `{target_dt.strftime('%Y-%m-%d %H:%M')}`")
+            st.write(f"- Meteo: `{weather}`")
+            st.write(f"- Temperatura: `{temperature}°C`")
+            st.write(f"- Tipo giorno: `{'Weekend' if target_dt.dayofweek >= 5 else 'Feriale'}`")
+            st.write(f"- Rush hour: `{'Sì' if selected_hour in [6,7,8,9,16,17,18] else 'No'}`")
         
         with col2:
-            st.markdown("**Valori lag:**")
-            st.write(f"- lag_1 (1h fa): {lag_1:,.0f}" if lag_1 else "- lag_1: N/A")
-            st.write(f"- lag_24 (24h fa): {lag_24:,.0f}" if lag_24 else "- lag_24: N/A")
-            st.write(f"- lag_168 (1 sett. fa): {lag_168:,.0f}" if lag_168 else "- lag_168: N/A")
+            st.markdown("**🔢 Valori Lag Utilizzati:**")
+            if 'lags' in locals() and lags:
+                for lag_name in ['lag_1', 'lag_24', 'lag_168']:
+                    val = lags.get(lag_name)
+                    st.write(f"- `{lag_name}`: {val:,.0f} veicoli/h" if val else f"- `{lag_name}`: default")
+            else:
+                st.write("- Generati da rolling forecast")
         
         if ground_truth is not None:
             st.markdown("---")
-            st.markdown("**Valutazione:**")
-            st.write(f"- Previsione: {prediction:,.0f}")
-            st.write(f"- Ground Truth: {ground_truth:,.0f}")
-            st.write(f"- Errore Assoluto: {abs(error):,.0f}")
-            st.write(f"- Errore Percentuale: {error_pct:.2f}%")
+            st.markdown("**📊 Valutazione Accuratezza:**")
+            st.write(f"- Previsione: `{prediction:,.0f}` veicoli/h")
+            st.write(f"- Ground Truth: `{ground_truth:,.0f}` veicoli/h")
+            st.write(f"- Errore Assoluto: `{abs(error):,.0f}` veicoli/h")
+            st.write(f"- Errore Percentuale: `{error_pct:.2f}%`")
+            st.write(f"- MAE tipico del modello: ~300 veicoli/h")
 
 # =============================================================================
-# INFO SIDEBAR
+# SIDEBAR INFORMAZIONI
 # =============================================================================
 with st.sidebar:
-    st.markdown("### ℹ️ Informazioni")
-    st.markdown("""
-    **Come funziona:**
-    1. Seleziona data e ora
-    2. Imposta condizioni meteo
-    3. Clicca "Genera Previsione"
+    st.markdown("### 📖 Guida all'Uso")
     
-    **Confronto Ground Truth:**
-    - Se la data è nel dataset (2012-2018), viene mostrato anche il valore reale
-    - Questo permette di verificare l'accuratezza del modello
-    
-    **Feature principali:**
-    - `lag_1`: traffico 1 ora prima
-    - `hour_cos`: encoding ciclico ora
-    - `is_weekend`: flag weekend
+    st.markdown("**📊 Modalità Storica (2012-2018)**")
+    st.info("""
+    - Usa **lag reali** dal dataset
+    - Mostra **ground truth** per confronto
+    - Valuta **accuratezza** del modello
+    - ⚡ Veloce (1 predizione)
     """)
     
-    if df is not None:
-        st.markdown("---")
-        st.markdown("### 📊 Dataset")
-        st.write(f"- Osservazioni: {len(df):,}")
-        st.write(f"- Periodo: {df['date_time'].min().date()} → {df['date_time'].max().date()}")
+    st.markdown("**🚀 Modalità Futura (>2018)**")
+    st.warning("""
+    - Usa **rolling forecast**
+    - Predice ora per ora
+    - Usa predizioni come lag
+    - ⏱️ Più lento (N predizioni)
+    - ⚠️ Errore si accumula nel tempo
+    """)
+    
+    st.markdown("---")
+    st.markdown("### ⚙️ Come Funziona")
+    
+    with st.expander("Rolling Forecast"):
+        st.code("""
+# Ultimo valore reale: 31 dic 2018
+ultimo = 4500
+
+# Target: 15 giu 2020
+# Ore da predire: ~12,000
+
+for ora in range(12000):
+    lag_1 = predizione_precedente
+    pred = model.predict(lag_1, ...)
+    predizione_precedente = pred
+
+risultato = pred  # ultima predizione
+        """, language="python")
+    
+    st.markdown("---")
+    st.markdown("### 🎯 Feature Principali")
+    st.markdown("""
+    **Temporali:**
+    - Ora, giorno settimana, mese
+    - Encoding ciclico (sin/cos)
+    - Rush hour, weekend
+    
+    **Lag:**
+    - lag_1, lag_24, lag_168
+    - Differenze tra lag
+    
+    **Meteo:**
+    - Temperatura
+    - Condizione (Clear, Rain, Snow...)
+    
+    **Rolling:**
+    - Media/std mobile 24h e 168h
+    """)
+    
+    st.markdown("---")
+    st.markdown("### 💡 Best Practice")
+    st.success("""
+    **Per predizioni accurate:**
+    
+    1. Usa modalità storica per valutare il modello
+    2. Per date future prossime (1-2 giorni) il rolling forecast è affidabile
+    3. Per date molto lontane (mesi/anni) l'errore aumenta
+    4. In produzione: aggiorna il dataset regolarmente con dati reali
+    """)
+    
+    st.markdown("---")
+    st.markdown("### ℹ️ Info Modello")
+    st.markdown(f"""
+    - **Algoritmo**: XGBoost
+    - **Dataset**: {len(df):,} osservazioni
+    - **Periodo**: 2012-2018
+    - **Feature**: {len(feature_columns) if feature_columns else 'N/A'}
+    - **Target**: traffic_volume (veicoli/ora)
+    """)
