@@ -1,38 +1,31 @@
-"""
-================================================================================
-PAGINA 2: ANALISI E KPI
-================================================================================
-"""
+#PAGINA 2: ANALISI E KPI
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import json
-from pathlib import Path  # <--- FONDAMENTALE
+from pathlib import Path  
 
 st.set_page_config(page_title="Analisi e KPI", page_icon="📈", layout="wide")
 
-# =============================================================================
 # CARICAMENTO DATI
-# =============================================================================
 @st.cache_data
 def load_data():
     """Carica il dataset processato"""
-    # Path: pages -> streamlit_dashboard -> data
     data_path = Path(__file__).parent.parent / 'data' / 'traffic_processed.csv'
     
     try:
         df = pd.read_csv(data_path, parse_dates=['date_time'])
         return df
     except Exception as e:
-        st.error(f"❌ Errore caricamento dati: {e}")
+        st.error(f" Errore caricamento dati: {e}")
         st.stop()
 
 @st.cache_data
 def load_metrics():
     """Carica le metriche"""
-    # Path: pages -> streamlit_dashboard -> data
     json_path = Path(__file__).parent.parent / 'data' / 'final_metrics.json'
     
     try:
@@ -41,11 +34,9 @@ def load_metrics():
     except:
         return {}
 
-# =============================================================================
 # PAGINA
-# =============================================================================
 def main():
-    st.title("📈 Analisi e KPI")
+    st.title(" Analisi e KPI")
     st.markdown("Pattern temporali e indicatori chiave di performance")
     
     # Carica dati
@@ -61,10 +52,7 @@ def main():
         df['day_of_week'] = df['date_time'].dt.dayofweek
     
     st.markdown("---")
-    
-    # ==========================================================================
-    # KPI CARDS
-    # ==========================================================================
+        # KPI CARDS
     st.subheader("🎯 KPI Operativi")
     
     # Calcola KPI
@@ -92,14 +80,14 @@ def main():
     
     with col1:
         st.metric(
-            label="📊 Traffico Medio",
+            label=" Traffico Medio",
             value=f"{mean_traffic:,.0f}",
             help="Veicoli/ora - media globale"
         )
     
     with col2:
         st.metric(
-            label="🌅 Picco Mattutino",
+            label=" Picco Mattutino",
             value=f"{peak_am_hour}:00",
             delta=f"{hourly_mean[peak_am_hour]:,.0f} v/h",
             delta_color="off"
@@ -107,7 +95,7 @@ def main():
     
     with col3:
         st.metric(
-            label="🌆 Picco Serale",
+            label=" Picco Serale",
             value=f"{peak_pm_hour}:00",
             delta=f"{hourly_mean[peak_pm_hour]:,.0f} v/h",
             delta_color="off"
@@ -115,7 +103,7 @@ def main():
     
     with col4:
         st.metric(
-            label="📉 Riduzione Weekend",
+            label=" Riduzione Weekend",
             value=f"{abs(weekend_delta):.0f}%",
             delta=f"{weekend_delta:.0f}%",
             delta_color="inverse"
@@ -126,7 +114,7 @@ def main():
     
     with col1:
         st.metric(
-            label="🎉 Impatto Festività",
+            label=" Impatto Festività",
             value=f"{abs(holiday_delta):.0f}%",
             delta="riduzione",
             delta_color="inverse"
@@ -134,7 +122,7 @@ def main():
     
     with col2:
         st.metric(
-            label="🎯 MAE Modello",
+            label=" MAE Modello",
             value=f"{metrics.get('test_mae', 450):.0f}",
             delta=f"+{metrics.get('improvement_vs_naive_pct', 28):.0f}% vs baseline",
             help="Mean Absolute Error su test set"
@@ -142,7 +130,7 @@ def main():
     
     with col3:
         st.metric(
-            label="📐 R² Score",
+            label=" R² Score",
             value=f"{metrics.get('test_r2', 0.92):.3f}",
             help="Varianza spiegata dal modello"
         )
@@ -150,17 +138,15 @@ def main():
     with col4:
         model_reliability = (1 - metrics.get('test_mae', 450) / mean_traffic) * 100
         st.metric(
-            label="✅ Affidabilità",
+            label=" Affidabilità",
             value=f"{model_reliability:.0f}%",
             help="1 - (MAE / media traffico)"
         )
     
     st.markdown("---")
     
-    # ==========================================================================
     # PATTERN ORARIO
-    # ==========================================================================
-    st.subheader("⏰ Pattern Orario")
+    st.subheader(" Pattern Orario")
     
     col1, col2 = st.columns([2, 1])
     
@@ -204,7 +190,7 @@ def main():
     
     with col2:
         st.markdown("""
-        ### 📊 Osservazioni
+        ###  Osservazioni
         
         **Pattern Bimodale (Feriali)**:
         - Picco mattutino: 7-8 AM
@@ -222,10 +208,8 @@ def main():
     
     st.markdown("---")
     
-    # ==========================================================================
     # HEATMAP GIORNO × ORA
-    # ==========================================================================
-    st.subheader("🗓️ Heatmap Ora × Giorno")
+    st.subheader(" Heatmap Ora × Giorno")
     
     # Pivot table
     pivot = df.pivot_table(
@@ -256,10 +240,8 @@ def main():
     
     st.markdown("---")
     
-    # ==========================================================================
     # IMPATTO CONDIZIONI METEO
-    # ==========================================================================
-    st.subheader("🌤️ Impatto Condizioni Meteo")
+    st.subheader(" Impatto Condizioni Meteo")
     
     col1, col2 = st.columns(2)
     
@@ -291,7 +273,7 @@ def main():
     
     with col2:
         st.markdown("""
-        ### 📊 Osservazioni
+        ###  Osservazioni
         
         **Condizioni avverse**:
         - Snow, Fog, Thunderstorm → traffico ridotto
@@ -308,13 +290,10 @@ def main():
     
     st.markdown("---")
     
-    # ==========================================================================
     # ACTUAL VS PREDICTED (se disponibile)
-    # ==========================================================================
-    st.subheader("🎯 Performance del Modello: Actual vs Predicted")
+    st.subheader(" Performance del Modello: Actual vs Predicted")
     
     # 1. Calcola il percorso corretto per questo file specifico
-    # (pages -> streamlit_dashboard -> data -> test_predictions.csv)
     pred_path = Path(__file__).parent.parent / 'data' / 'test_predictions.csv'
     
     try:
@@ -348,12 +327,8 @@ def main():
         st.plotly_chart(fig, use_container_width=True)
         
     except FileNotFoundError:
-        st.info("📊 I dati delle previsioni saranno disponibili dopo l'esecuzione del modello.")
-        # Debug: Rimuovi il commento sotto se vuoi vedere dove sta cercando il file
-        # st.write(f"Sto cercando in: {pred_path}")
+        st.info(" I dati delle previsioni saranno disponibili dopo l'esecuzione del modello.")
 
-# =============================================================================
 # ESECUZIONE
-# =============================================================================
 if __name__ == "__main__":
     main()
