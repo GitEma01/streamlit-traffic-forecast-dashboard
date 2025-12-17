@@ -374,7 +374,7 @@ with col1:
     else:
         selected_date = st.date_input(
             "Data",
-            value=datetime(2018, 10, 01).date(),
+            value=datetime(2018, 10, 1).date(),
             min_value=max_date + timedelta(days=1),
             max_value=datetime(2025, 12, 31).date(),
             help="Seleziona una data futura (oltre il dataset)"
