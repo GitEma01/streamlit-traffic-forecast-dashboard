@@ -1,20 +1,11 @@
-"""
-================================================================================
-TRAFFIC FORECAST DASHBOARD - I-94 MINNEAPOLIS-ST.PAUL
-================================================================================
-VERSIONE PREMIUM con HTML/CSS Custom - FIX RENDERING
-================================================================================
-"""
-
+#TRAFFIC FORECAST DASHBOARD - I-94 MINNEAPOLIS-ST.PAUL
 import streamlit as st
 import pandas as pd
 import numpy as np
 import json
 from pathlib import Path
 
-# =============================================================================
 # CONFIGURAZIONE PAGINA
-# =============================================================================
 st.set_page_config(
     page_title="Traffic Forecast I-94",
     page_icon="🚗",
@@ -22,9 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# =============================================================================
 # STILI CSS PREMIUM
-# =============================================================================
 st.markdown("""
 <style>
     /* Import Google Fonts */
@@ -332,9 +321,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# =============================================================================
 # FUNZIONI UTILITY
-# =============================================================================
 @st.cache_data
 def load_metrics():
     try:
@@ -375,9 +362,7 @@ def load_data_summary():
         print(f"Errore caricamento CSV: {e}")
         return {'n_rows': 40575, 'date_start': 'Oct 2012', 'date_end': 'Sep 2018', 'mean_traffic': 3290}
 
-# =============================================================================
 # CONTENUTO HOMEPAGE
-# =============================================================================
 def main():
     metrics = load_metrics()
     summary = load_data_summary()
